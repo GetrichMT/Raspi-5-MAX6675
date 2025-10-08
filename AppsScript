@@ -1,0 +1,69 @@
+function doGet(e) {
+  Logger.log(JSON.stringify(e));
+  if (!e.parameter.data) {
+    return ContentService.createTextOutput('Missing "data" parameter');
+  }
+
+  var sheet_id = '*******************'; //GoogleSheet web id
+  var sheet_name = "*********";
+  var sheet = SpreadsheetApp.openById(sheet_id).getSheetByName(sheet_name);
+
+  var Curr_Date = Utilities.formatDate(new Date(), "Asia/Jakarta", 'dd/MM/yyyy');
+  var Curr_Time = Utilities.formatDate(new Date(), "Asia/Jakarta", 'HH:mm:ss');
+
+  // Example data: {"pompaA": 30.2, "pompaB": null, "pompaC": 27.9, "pompaD": ""}
+  var data = JSON.parse(e.parameter.data);
+
+  // Same column mapping
+  const deviceMap = {
+    'pompaA': 1,   // A–C
+    'pompaB': 5,   // E–G
+    'pompaC': 9,   // I–K
+    'pompaD': 13   // M–O
+  };
+
+  for (var sensor_id in data) {
+    if (!(sensor_id in deviceMap)) continue;
+
+    var temperature_val = data[sensor_id];
+
+    // Skip empty or invalid readings
+    if (temperature_val === "" || temperature_val === null || isNaN(temperature_val)) {
+      Logger.log("Skipped " + sensor_id + " (no valid data)");
+      continue;
+    }
+
+    var colStart = deviceMap[sensor_id];
+    var sheetLastRow = sheet.getLastRow();
+    var foundRow = 0;
+
+    for (var i = 2; i <= sheetLastRow; i++) {
+      var thisDeviceDate = sheet.getRange(i, colStart).getValue();
+      if (thisDeviceDate) continue;
+
+      var otherDeviceHasData = false;
+      for (var dev in deviceMap) {
+        if (dev !== sensor_id) {
+          var otherCol = deviceMap[dev];
+          if (sheet.getRange(i, otherCol).getValue()) {
+            otherDeviceHasData = true;
+            break;
+          }
+        }
+      }
+
+      if (otherDeviceHasData) {
+        foundRow = i;
+        break;
+      }
+    }
+
+    if (!foundRow) foundRow = sheetLastRow + 1;
+
+    sheet.getRange(foundRow, colStart).setValue(Curr_Date);
+    sheet.getRange(foundRow, colStart + 1).setValue(Curr_Time);
+    sheet.getRange(foundRow, colStart + 2).setValue(temperature_val);
+  }
+
+  return ContentService.createTextOutput('Data written (skipped invalid sensors)');
+}
